@@ -71,6 +71,19 @@ interface MovieDetails {
   vote_count: number;
 }
 
+interface MovieVideo {
+  id: string;
+  iso_639_1: string;
+  iso_3166_1: string;
+  key: string;           // YouTube video ID
+  name: string;
+  official: boolean;
+  published_at: string;
+  site: string;          // "YouTube" | "Vimeo"
+  size: number;
+  type: string;          // "Trailer" | "Featurette" | "Clip" | ...
+}
+
 interface TrendingCardProps {
   movie: TrendingMovie;
   index: number;

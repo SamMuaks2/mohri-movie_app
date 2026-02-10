@@ -1,8 +1,10 @@
 import { icons } from '@/constants/icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React from 'react';
-import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { fetchMovieDetails } from '../services/api';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Image, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import YoutubePlayer from 'react-native-youtube-iframe';
+import * as WebBrowser from 'expo-web-browser';
+import { fetchMovieDetails, fetchMovieVideos } from '../services/api';
 import useFetch from '../services/useFetch';
 
 interface MovieInfoProps {
@@ -25,7 +27,50 @@ const MovieInfo = ({label, value}: MovieInfoProps) => (
 const MovieDetails = () => {
   const {id} = useLocalSearchParams();
 
-  const {data: movie, loading} = useFetch(() => fetchMovieDetails(id as string));
+  const {data: movie, loading: movieLoading} = useFetch(() => 
+    fetchMovieDetails(id as string)
+);
+
+  const { data: videos, loading: videosLoading } = useFetch(() =>
+    fetchMovieVideos(id as string)
+  );
+
+  // ── trailer modal state ──
+  const [modalVisible, setModalVisible] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  // pick the best trailer key (first in the sorted list returned by the API)
+  const trailerKey = videos?.[0]?.key ?? null;
+  const hasTrailer = !!trailerKey;
+
+  const onChangeState = useCallback((event: string) => {
+    if (event === 'ended') {
+      setPlaying(false);
+    }
+  }, []);
+
+  const openTrailer = () => {
+    if (!hasTrailer) return;
+    setPlaying(true);
+    setModalVisible(true);
+  };
+
+  const closeTrailer = () => {
+    setPlaying(false);
+    setModalVisible(false);
+  };
+
+  const isLoading = movieLoading || videosLoading;
+
+  // ── loading state ──
+  if (isLoading) {
+    return (
+      <View className="flex-1 bg-primary justify-center items-center">
+        <ActivityIndicator size="large" color="#AB8BFF" />
+      </View>
+    );
+  }
+  
 
   return (
     <View className='bg-primary flex-1'>
@@ -36,6 +81,24 @@ const MovieDetails = () => {
             className='w-full h-[550px]'
             resizeMode='stretch'
           />
+
+          {/* Play button — only shown when a trailer is available */}
+          {hasTrailer && (
+            <TouchableOpacity
+              onPress={openTrailer}
+              className="absolute inset-0 justify-center items-center"
+              activeOpacity={0.7}
+            >
+              {/* semi-transparent dark circle */}
+              <View className="w-20 h-20 rounded-full bg-black/60 justify-center items-center border-2 border-white/80">
+                <Image
+                  source={icons.play}
+                  className="size-8 ml-1"
+                  tintColor="#fff"
+                />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View className='flex-col items-start justify-center mt-5 px-5'>
@@ -91,6 +154,26 @@ const MovieDetails = () => {
               label='Production Companies'
               value={movie?.production_companies.map((c) => c.name).join(' - ') || 'N/A'}
             />
+
+             {/* trailer label when available */}
+          {hasTrailer && (
+            <TouchableOpacity
+              onPress={openTrailer}
+              className="mt-6 flex-row items-center gap-x-2"
+              activeOpacity={0.7}
+            >
+              <View className="bg-accent rounded-full px-4 py-2 flex-row items-center gap-x-2">
+                <Image
+                  source={icons.play}
+                  className="size-4"
+                  tintColor="#fff"
+                />
+                <Text className="text-white font-semibold text-sm">
+                  Watch Trailer
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -106,6 +189,48 @@ const MovieDetails = () => {
 
         <Text className='text-white font-semibold text-base'>Go back</Text>
       </TouchableOpacity>
+
+       {/* ── Trailer Modal ── */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeTrailer}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/90 justify-center items-center px-5"
+          onPress={closeTrailer}
+          activeOpacity={1}
+        >
+          {/* Close button */}
+          <TouchableOpacity
+            className="self-end mb-3 p-2"
+            onPress={closeTrailer}
+          >
+            <Text className="text-white text-2xl font-bold">✕</Text>
+          </TouchableOpacity>
+
+          {/* YouTube player */}
+          {modalVisible && trailerKey && (
+            <YoutubePlayer
+              height={220}
+              videoId={trailerKey}
+              play={playing}
+              onChangeState={onChangeState}
+              onError={() => closeTrailer()}
+              initialPlayerParams={{
+                showClosedCaptions: false,
+                cc_lang_pref: 'en',
+              }}
+            />
+          )}
+
+          {/* Video title */}
+          <Text className="text-light-200 text-sm mt-3 text-center">
+            {videos?.[0]?.name || 'Trailer'}
+          </Text>
+        </TouchableOpacity>
+      </Modal>
     </View>
   )
 }

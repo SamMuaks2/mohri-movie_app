@@ -46,6 +46,44 @@ export const fetchMovieDetails = async (movieId: string): Promise<MovieDetails> 
     }
 }
 
+
+export const fetchMovieVideos = async (movieId: string): Promise<MovieVideo[]> => {
+    try {
+        const response = await fetch(
+            `${TMDB_CONFIG.BASE_URL}/movie/${movieId}/videos?language=en-US`,
+            {
+                method: 'GET',
+                headers: TMDB_CONFIG.headers,
+            }
+        );
+
+        if (!response.ok) throw new Error('Failed to fetch movie videos');
+
+        const data = await response.json();
+
+        // Prefer official trailers first, then any trailer, then any video
+        const trailers: MovieVideo[] = data.results.filter(
+            (v: MovieVideo) => v.site === 'YouTube' && v.type === 'Trailer'
+        );
+        const featurettes: MovieVideo[] = data.results.filter(
+            (v: MovieVideo) => v.site === 'YouTube' && v.type !== 'Trailer'
+        );
+
+        // Return trailers first (official ones prioritised), then featurettes
+        const sorted = [
+            ...trailers.sort((a, b) => (b.official ? 1 : 0) - (a.official ? 1 : 0)),
+            ...featurettes,
+        ];
+
+        return sorted;
+    } catch (error) {
+        console.log(error);
+        throw error;
+    }
+}
+
+
+
 // const url = 'https://api.themoviedb.org/3/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&sort_by=popularity.desc';
 // const options = {
 //   method: 'GET',
