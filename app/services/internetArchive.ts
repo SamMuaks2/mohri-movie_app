@@ -1,5 +1,4 @@
 // Legal full movie streaming via Internet Archive
-
 export interface ArchiveMovie {
   identifier: string;
   title: string;
@@ -37,6 +36,20 @@ export interface ArchiveMetadata {
 }
 
 const ARCHIVE_API_BASE = 'https://archive.org';
+
+/**
+ * Properly encode URL components while preserving the path structure
+ */
+const buildStreamUrl = (server: string, dir: string, filename: string): string => {
+  // Ensure server has protocol
+  const serverUrl = server.startsWith('http') ? server : `https://${server}`;
+  
+  // Encode only the filename, not the entire path
+  // encodeURIComponent encodes everything including / which we don't want for dir
+  const encodedFilename = encodeURIComponent(filename);
+  
+  return `${serverUrl}${dir}/${encodedFilename}`;
+};
 
 /**
  * Search Internet Archive for movies
@@ -96,6 +109,7 @@ export const getArchiveMovieDetails = async (
 /**
  * Get the best streaming URL for a movie
  * Prioritizes MP4 > OGV > other video formats
+ * FIXED: Properly encodes filenames with special characters
  */
 export const getStreamingUrl = (metadata: ArchiveMetadata): string | null => {
   const { files, server, dir } = metadata;
@@ -111,20 +125,22 @@ export const getStreamingUrl = (metadata: ArchiveMetadata): string | null => {
     );
     
     if (videoFile) {
-      return `${server}${dir}/${videoFile.name}`;
+      return buildStreamUrl(server, dir, videoFile.name);
     }
   }
 
   // Fallback: find any video file
   const anyVideo = files.find(
     file => 
-      file.name.toLowerCase().endsWith('.mp4') ||
-      file.name.toLowerCase().endsWith('.ogv') ||
-      file.name.toLowerCase().endsWith('.mpeg')
+      (file.name.toLowerCase().endsWith('.mp4') ||
+       file.name.toLowerCase().endsWith('.m4v') ||
+       file.name.toLowerCase().endsWith('.ogv') ||
+       file.name.toLowerCase().endsWith('.mpeg')) &&
+      !file.name.includes('.thumbs')
   );
 
   if (anyVideo) {
-    return `${server}${dir}/${anyVideo.name}`;
+    return buildStreamUrl(server, dir, anyVideo.name);
   }
 
   return null;
@@ -132,6 +148,7 @@ export const getStreamingUrl = (metadata: ArchiveMetadata): string | null => {
 
 /**
  * Get all available quality options for a movie
+ * FIXED: Properly encodes all URLs
  */
 export const getStreamingOptions = (metadata: ArchiveMetadata) => {
   const { files, server, dir } = metadata;
@@ -142,12 +159,13 @@ export const getStreamingOptions = (metadata: ArchiveMetadata) => {
        file.format?.includes('MP4') || 
        file.format?.includes('OGG') ||
        file.name.toLowerCase().endsWith('.mp4') ||
+       file.name.toLowerCase().endsWith('.m4v') ||
        file.name.toLowerCase().endsWith('.ogv')) &&
       !file.name.includes('.thumbs')
   );
 
   return videoFiles.map(file => ({
-    url: `${server}${dir}/${file.name}`,
+    url: buildStreamUrl(server, dir, file.name),
     format: file.format,
     size: file.size,
     name: file.name,
@@ -164,6 +182,8 @@ const determineQuality = (filename: string, format: string): string => {
   if (name.includes('1080') || name.includes('hd')) return '1080p';
   if (name.includes('720')) return '720p';
   if (name.includes('480')) return '480p';
+  if (name.includes('small') || name.includes('low')) return 'Low';
+  if (name.includes('medium')) return 'Medium';
   if (format?.includes('MPEG4') || format?.includes('h.264')) return 'High';
   if (format?.includes('OGG')) return 'Medium';
   
